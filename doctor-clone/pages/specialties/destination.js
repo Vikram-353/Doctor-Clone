@@ -25,43 +25,79 @@ export default function DoctorListingPage() {
   const pageSize = 10;
   const containerRef = useRef(null);
   const [scrollTriggerActive, setScrollTriggerActive] = useState(false);
+  const [hasMoreData, setHasMoreData] = useState(false);
 
+  // Initial data fetch on component mount
   useEffect(() => {
-    fetchDoctors(filters);
+    fetchDoctors(filters, true);
   }, []);
 
+  // Handle scroll events and content height checks
   useEffect(() => {
+    // Check if content is smaller than viewport and load more if needed
+    const checkContentHeight = () => {
+      if (
+        document.body.offsetHeight <= window.innerHeight &&
+        !loading &&
+        !loadingMore &&
+        !scrollTriggerActive &&
+        hasMoreData
+      ) {
+        setScrollTriggerActive(true);
+        fetchDoctors(filters, false)
+          .then(() => {
+            setScrollTriggerActive(false);
+            setTimeout(checkContentHeight, 100);
+          })
+          .catch(() => {
+            setScrollTriggerActive(false);
+          });
+      }
+    };
+
+    // Handle scroll to top for refreshing the list
     const handleScroll = () => {
-      const threshold = 100;
+      const threshold = 50; // Pixel threshold for top of page
 
       if (
         window.scrollY <= threshold &&
+        window.scrollY > 0 && // Add this to prevent triggering on initial load
         !loading &&
         !loadingMore &&
         !scrollTriggerActive
       ) {
         setScrollTriggerActive(true);
-        fetchDoctors(filters, true).then(() => {
-          setScrollTriggerActive(false);
-        });
+
+        // Reset to first page when scrolling to top
+        fetchDoctors(filters, true)
+          .then(() => {
+            setScrollTriggerActive(false);
+          })
+          .catch(() => {
+            setScrollTriggerActive(false);
+          });
       }
     };
 
     window.addEventListener("scroll", handleScroll);
+    checkContentHeight();
+
     return () => {
       window.removeEventListener("scroll", handleScroll);
     };
-  }, [filters, loading, loadingMore, scrollTriggerActive]);
+  }, [filters, loading, loadingMore, scrollTriggerActive, hasMoreData]);
 
+  // Fetch doctors data with pagination
   const fetchDoctors = async (activeFilters = {}, reset = true) => {
     try {
+      // Set appropriate loading state
       if (reset) {
         setLoading(true);
-        setPage(1);
       } else {
         setLoadingMore(true);
       }
 
+      // Calculate what page to request
       const paginationParams = {
         page: reset ? 1 : page + 1,
         limit: pageSize,
@@ -72,8 +108,10 @@ export default function DoctorListingPage() {
         ...paginationParams,
       });
 
+      // Handle doctors data
       if (reset) {
         setDoctors(response.data.doctors || []);
+        setPage(1); // Reset page counter when refreshing
       } else {
         setDoctors((prevDoctors) => [
           ...prevDoctors,
@@ -82,22 +120,34 @@ export default function DoctorListingPage() {
         setPage((prevPage) => prevPage + 1);
       }
 
+      // Check if there's more data to load
+      const receivedDoctors = response.data.doctors || [];
+      const hasMore =
+        receivedDoctors.length >= pageSize &&
+        response.data.total > paginationParams.page * pageSize;
+      setHasMoreData(hasMore);
+
       setTotalDoctors(response.data.total || 0);
       setLoading(false);
       setLoadingMore(false);
+
+      return response;
     } catch (err) {
       setError("Failed to fetch doctors. Please try again.");
       setLoading(false);
       setLoadingMore(false);
       console.error("Error fetching doctors:", err);
+      throw err;
     }
   };
 
+  // Filter handling
   const handleFilterChange = (newFilters) => {
     setFilters(newFilters);
     fetchDoctors(newFilters, true);
   };
 
+  // Sort handling
   const handleSortChange = (option) => {
     const updatedFilters = { ...filters, sortBy: option };
     setSortBy(option);
@@ -106,6 +156,7 @@ export default function DoctorListingPage() {
     setShowSortOptions(false);
   };
 
+  // Search handling
   const handleSearch = (e) => {
     e.preventDefault();
     const updatedFilters = { ...filters, query: searchQuery };
@@ -113,6 +164,7 @@ export default function DoctorListingPage() {
     fetchDoctors(updatedFilters, true);
   };
 
+  // Manual load more button handler
   const handleLoadMore = () => {
     fetchDoctors(filters, false);
   };
@@ -123,201 +175,6 @@ export default function DoctorListingPage() {
     "Price: Low to High",
     "Price: High to Low",
   ];
-
-  // return (
-  //   <div ref={containerRef} className="bg-gray-50 min-h-screen pb-16 ">
-  //     <Head>
-  //       <title>General Physician / Internal Medicine | Apollo</title>
-  //       <meta
-  //         name="description"
-  //         content="Find the best general physicians and internal medicine doctors at Apollo Hospitals."
-  //       />
-  //     </Head>
-
-  //     <Header />
-
-  //     <div className="bg-white shadow-sm  ">
-  //       <div className="max-w-7xl mx-auto px-4 py-3">
-  //         <div className="flex items-center text-sm">
-  //           <a href="#" className="text-teal-600 hover:underline">
-  //             Home
-  //           </a>
-  //           <span className="mx-2 text-gray-500">&gt;</span>
-  //           <a href="#" className="text-teal-600 hover:underline">
-  //             Doctors
-  //           </a>
-  //           <span className="mx-2 text-gray-500">&gt;</span>
-  //           <span className="text-gray-500">General Physicians</span>
-  //         </div>
-  //       </div>
-  //     </div>
-
-  //     <div className="max-w-7xl mx-auto px-4 py-6">
-  //       <div className="md:hidden flex justify-between mb-4">
-  //         <button
-  //           onClick={() => setShowMobileFilters(!showMobileFilters)}
-  //           className="flex items-center bg-white border border-gray-300 rounded-lg px-4 py-2 text-gray-700"
-  //         >
-  //           <Filter size={18} className="mr-2" />
-  //           Filters
-  //         </button>
-  //         <div className="relative">
-  //           <button
-  //             className="flex items-center bg-white border border-gray-300 rounded-lg px-4 py-2 text-gray-700"
-  //             onClick={() => setShowSortOptions(!showSortOptions)}
-  //           >
-  //             <span className="mr-2">Sort</span>
-  //             <ChevronDown size={18} />
-  //           </button>
-  //           {showSortOptions && (
-  //             <div className="absolute right-0 z-10 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-md">
-  //               {sortOptions.map((option) => (
-  //                 <div
-  //                   key={option}
-  //                   onClick={() => handleSortChange(option)}
-  //                   className={`px-4 py-2 hover:bg-gray-100 cursor-pointer ${
-  //                     sortBy === option ? "font-semibold text-teal-600" : ""
-  //                   }`}
-  //                 >
-  //                   {option}
-  //                 </div>
-  //               ))}
-  //             </div>
-  //           )}
-  //         </div>
-  //       </div>
-
-  //       <div className="flex flex-col md:flex-row gap-4">
-  //         <aside
-  //           className={`md:w-1/4 lg:w-1/5 transition-all duration-300 ${
-  //             showMobileFilters ? "block" : "hidden md:block"
-  //           }`}
-  //         >
-  //           <div className="sticky top-4">
-  //             <Filters onFilterChange={handleFilterChange} />
-  //           </div>
-  //         </aside>
-
-  //         <main className="md:w-3/4 lg:w-4/5 space-y-6">
-  //           <div className="hidden md:flex justify-between items-center p-4 bg-white rounded-lg shadow-sm">
-  //             <p className="text-gray-700 text-sm">
-  //               Showing <span className="font-semibold">{doctors.length}</span>{" "}
-  //               of <span className="font-semibold">{totalDoctors}</span> doctors
-  //             </p>
-
-  //             <div className="relative">
-  //               <button
-  //                 onClick={() => setShowSortOptions(!showSortOptions)}
-  //                 className="flex items-center gap-2 px-4 py-2 border border-gray-300 bg-white text-gray-700 rounded-lg hover:shadow-sm transition"
-  //               >
-  //                 <span>Sort by: {sortBy}</span>
-  //                 <ChevronDown size={18} />
-  //               </button>
-  //               {showSortOptions && (
-  //                 <div className="absolute right-0 mt-2 z-10 w-48 bg-white border border-gray-200 rounded-md shadow-md">
-  //                   {sortOptions.map((option) => (
-  //                     <div
-  //                       key={option}
-  //                       onClick={() => handleSortChange(option)}
-  //                       className={`px-4 py-2 text-sm hover:bg-gray-100 cursor-pointer ${
-  //                         sortBy === option ? "font-semibold text-teal-600" : ""
-  //                       }`}
-  //                     >
-  //                       {option}
-  //                     </div>
-  //                   ))}
-  //                 </div>
-  //               )}
-  //             </div>
-  //           </div>
-
-  //           <div className="space-y-4">
-  //             {loading ? (
-  //               <div className="bg-white p-10 text-center rounded-lg shadow-sm">
-  //                 <div className="animate-spin inline-block h-8 w-8 border-4 border-gray-300 border-t-teal-600 rounded-full mb-4"></div>
-  //                 <p className="text-gray-600">
-  //                   Finding the best doctors for you...
-  //                 </p>
-  //               </div>
-  //             ) : error ? (
-  //               <div className="bg-white p-10 text-center rounded-lg shadow-sm">
-  //                 <p className="text-red-600 mb-4">{error}</p>
-  //                 <button
-  //                   onClick={() => fetchDoctors(filters)}
-  //                   className="bg-teal-600 hover:bg-teal-700 text-white font-medium py-2 px-4 rounded transition"
-  //                 >
-  //                   Try Again
-  //                 </button>
-  //               </div>
-  //             ) : doctors.length > 0 ? (
-  //               doctors.map((doctor) => (
-  //                 <DoctorCard
-  //                   key={doctor._id || doctor.id || doctor.name}
-  //                   doctor={doctor}
-  //                 />
-  //               ))
-  //             ) : (
-  //               <div className="bg-white p-10 text-center rounded-lg shadow-sm">
-  //                 <p className="text-gray-600 mb-4">
-  //                   No doctors found matching your criteria.
-  //                 </p>
-  //                 <button
-  //                   onClick={() => {
-  //                     setFilters({});
-  //                     fetchDoctors({});
-  //                     setSearchQuery("");
-  //                   }}
-  //                   className="bg-teal-600 hover:bg-teal-700 text-white font-medium py-2 px-4 rounded transition"
-  //                 >
-  //                   Clear Filters
-  //                 </button>
-  //               </div>
-  //             )}
-  //           </div>
-
-  //           {!loading &&
-  //             doctors.length > 0 &&
-  //             doctors.length < totalDoctors && (
-  //               <div className="text-center pt-4">
-  //                 <button
-  //                   onClick={handleLoadMore}
-  //                   disabled={loadingMore}
-  //                   className="bg-white hover:bg-gray-50 text-teal-600 font-medium py-3 px-6 rounded-lg border border-gray-300 flex items-center justify-center mx-auto transition"
-  //                 >
-  //                   {loadingMore ? (
-  //                     <>
-  //                       <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-teal-600 mr-2"></div>
-  //                       Loading...
-  //                     </>
-  //                   ) : (
-  //                     <>
-  //                       Load More Doctors{" "}
-  //                       <ArrowRight size={16} className="ml-2" />
-  //                     </>
-  //                   )}
-  //                 </button>
-  //               </div>
-  //             )}
-  //         </main>
-  //       </div>
-  //     </div>
-
-  //     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-md py-3 px-4 md:hidden">
-  //       <div className="flex justify-between items-center">
-  //         <a
-  //           href="tel:+918040245807"
-  //           className="flex items-center text-teal-600 font-medium"
-  //         >
-  //           <Phone size={18} className="mr-2" />
-  //           Call for Help
-  //         </a>
-  //         <button className="bg-teal-600 hover:bg-teal-700 text-white font-medium py-2 px-4 rounded transition duration-150">
-  //           Book Appointment
-  //         </button>
-  //       </div>
-  //     </div>
-  //   </div>
-  // );
 
   return (
     <div ref={containerRef} className="bg-gray-50 min-h-screen pb-20">
@@ -409,21 +266,17 @@ export default function DoctorListingPage() {
                     }}
                   />
                 </div>
-                {/* Remove this section as the Apply button is now in the Filters component */}
               </div>
             </div>
           )}
 
-          {/* Desktop Sidebar Filters */}
           <aside className="hidden lg:block lg:w-1/4 xl:w-1/5 flex-shrink-0">
             <div className="sticky top-4">
               <Filters onFilterChange={handleFilterChange} />
             </div>
           </aside>
 
-          {/* Main Content Area */}
           <main className="flex-1 min-w-0">
-            {/* Desktop Sort Controls */}
             <div className="hidden lg:flex justify-between items-center p-4 bg-white rounded-lg shadow-sm mb-4">
               <p className="text-gray-700 text-sm">
                 Showing <span className="font-semibold">{doctors.length}</span>{" "}
@@ -459,7 +312,6 @@ export default function DoctorListingPage() {
               </div>
             </div>
 
-            {/* Doctor Results */}
             <div className="space-y-4">
               {loading ? (
                 <div className="bg-white p-8 text-center rounded-lg shadow-sm">
@@ -504,7 +356,6 @@ export default function DoctorListingPage() {
               )}
             </div>
 
-            {/* Load More Button */}
             {!loading &&
               doctors.length > 0 &&
               doctors.length < totalDoctors && (
@@ -532,7 +383,6 @@ export default function DoctorListingPage() {
         </div>
       </div>
 
-      {/* Mobile Footer Action Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-md py-3 px-4 lg:hidden z-30">
         <div className="flex justify-between items-center">
           <a
