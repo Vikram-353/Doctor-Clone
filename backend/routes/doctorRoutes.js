@@ -88,9 +88,9 @@ router.get("/list-doctors-with-filter", async (req, res) => {
   if (rating) {
     const ratingValue = parseInt(rating);
     if (ratingValue === 70) {
-      filter.rating = { $gte: 70, $lte: 80 };
+      filter.rating = { $gte: 70 };
     } else if (ratingValue === 80) {
-      filter.rating = { $gte: 80, $lte: 90 };
+      filter.rating = { $gte: 80 };
     } else if (ratingValue === 90) {
       filter.rating = { $gte: 90 };
     }

@@ -10,7 +10,7 @@ const connectDB = async () => {
       console.error(`MongoDB connection error: ${err}`);
     });
 
-    await mongoose.connect("mongodb://localhost:27017/doctors-clone", {
+    await mongoose.connect(process.env.MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
