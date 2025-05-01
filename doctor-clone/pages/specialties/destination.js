@@ -27,14 +27,13 @@ export default function DoctorListingPage() {
   const [scrollTriggerActive, setScrollTriggerActive] = useState(false);
   const [hasMoreData, setHasMoreData] = useState(false);
 
-  // Initial data fetch on component mount
   useEffect(() => {
+    setPage(1);
+    setHasMoreData(true);
     fetchDoctors(filters, true);
   }, []);
 
-  // Handle scroll events and content height checks
   useEffect(() => {
-    // Check if content is smaller than viewport and load more if needed
     const checkContentHeight = () => {
       if (
         document.body.offsetHeight <= window.innerHeight &&
@@ -55,20 +54,37 @@ export default function DoctorListingPage() {
       }
     };
 
-    // Handle scroll to top for refreshing the list
-    const handleScroll = () => {
-      const threshold = 50; // Pixel threshold for top of page
+    const debounce = (func, delay) => {
+      let timeoutId;
+      return function (...args) {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        timeoutId = setTimeout(() => {
+          func.apply(this, args);
+        }, delay);
+      };
+    };
 
+    let lastScrollY = window.scrollY;
+
+    const handleScrollRaw = () => {
+      const currentScrollY = window.scrollY;
+      const isScrollingUp = currentScrollY < lastScrollY;
+      const topThreshold = 3000;
+      const bottomThreshold = 200;
       if (
-        window.scrollY <= threshold &&
-        window.scrollY > 0 && // Add this to prevent triggering on initial load
+        isScrollingUp &&
+        currentScrollY <= topThreshold &&
         !loading &&
         !loadingMore &&
         !scrollTriggerActive
       ) {
+        console.log("Scrolled to top - refreshing list");
+        setLoading(true);
+        setPage(1);
         setScrollTriggerActive(true);
 
-        // Reset to first page when scrolling to top
         fetchDoctors(filters, true)
           .then(() => {
             setScrollTriggerActive(false);
@@ -77,7 +93,31 @@ export default function DoctorListingPage() {
             setScrollTriggerActive(false);
           });
       }
+
+      if (
+        !isScrollingUp &&
+        !loading &&
+        !loadingMore &&
+        !scrollTriggerActive &&
+        hasMoreData &&
+        window.innerHeight + currentScrollY >=
+          document.body.offsetHeight - bottomThreshold
+      ) {
+        console.log("Nearing bottom - loading more doctors");
+        setScrollTriggerActive(true);
+        fetchDoctors(filters, false)
+          .then(() => {
+            setScrollTriggerActive(false);
+          })
+          .catch(() => {
+            setScrollTriggerActive(false);
+          });
+      }
+
+      lastScrollY = currentScrollY;
     };
+
+    const handleScroll = debounce(handleScrollRaw, 100);
 
     window.addEventListener("scroll", handleScroll);
     checkContentHeight();
@@ -87,19 +127,18 @@ export default function DoctorListingPage() {
     };
   }, [filters, loading, loadingMore, scrollTriggerActive, hasMoreData]);
 
-  // Fetch doctors data with pagination
   const fetchDoctors = async (activeFilters = {}, reset = true) => {
     try {
-      // Set appropriate loading state
       if (reset) {
         setLoading(true);
+        setPage(1);
       } else {
         setLoadingMore(true);
       }
+      const requestPage = reset ? 1 : page + 1;
 
-      // Calculate what page to request
       const paginationParams = {
-        page: reset ? 1 : page + 1,
+        page: requestPage,
         limit: pageSize,
       };
 
@@ -108,26 +147,40 @@ export default function DoctorListingPage() {
         ...paginationParams,
       });
 
-      // Handle doctors data
+      const receivedDoctors = response.data.doctors || [];
+      const totalDocs = response.data.total || 0;
+
       if (reset) {
-        setDoctors(response.data.doctors || []);
-        setPage(1); // Reset page counter when refreshing
+        setDoctors(receivedDoctors);
       } else {
-        setDoctors((prevDoctors) => [
-          ...prevDoctors,
-          ...(response.data.doctors || []),
-        ]);
-        setPage((prevPage) => prevPage + 1);
+        setDoctors((prevDoctors) => {
+          const existingIds = new Set(prevDoctors.map((doctor) => doctor._id));
+
+          const newDoctors = receivedDoctors.filter(
+            (doctor) => !existingIds.has(doctor._id)
+          );
+
+          console.log(`Adding ${newDoctors.length} new unique doctors to list`);
+          console.log(
+            "Received IDs:",
+            receivedDoctors.map((d) => d._id)
+          );
+
+          return [...prevDoctors, ...newDoctors];
+        });
       }
 
-      // Check if there's more data to load
-      const receivedDoctors = response.data.doctors || [];
-      const hasMore =
-        receivedDoctors.length >= pageSize &&
-        response.data.total > paginationParams.page * pageSize;
-      setHasMoreData(hasMore);
+      if (reset) {
+        setPage(1);
+      } else {
+        setPage(requestPage);
+      }
 
-      setTotalDoctors(response.data.total || 0);
+      const hasMore =
+        receivedDoctors.length > 0 && requestPage * pageSize < totalDocs;
+
+      setHasMoreData(hasMore);
+      setTotalDoctors(totalDocs);
       setLoading(false);
       setLoadingMore(false);
 
@@ -141,13 +194,11 @@ export default function DoctorListingPage() {
     }
   };
 
-  // Filter handling
   const handleFilterChange = (newFilters) => {
     setFilters(newFilters);
     fetchDoctors(newFilters, true);
   };
 
-  // Sort handling
   const handleSortChange = (option) => {
     const updatedFilters = { ...filters, sortBy: option };
     setSortBy(option);
@@ -156,7 +207,6 @@ export default function DoctorListingPage() {
     setShowSortOptions(false);
   };
 
-  // Search handling
   const handleSearch = (e) => {
     e.preventDefault();
     const updatedFilters = { ...filters, query: searchQuery };
@@ -164,7 +214,6 @@ export default function DoctorListingPage() {
     fetchDoctors(updatedFilters, true);
   };
 
-  // Manual load more button handler
   const handleLoadMore = () => {
     fetchDoctors(filters, false);
   };
